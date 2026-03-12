@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+dimod
+dwave-ocean-sdk
+streamlit
+pydeck
+pandas
+requests
