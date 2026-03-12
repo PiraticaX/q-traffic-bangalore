@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Start FastAPI on 0.0.0.0 so the container network can route to it
-uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+# Export the project root to PYTHONPATH so `backend` can be resolved
+export PYTHONPATH=$PYTHONPATH:$(pwd)
 
-# Start Streamlit
+# Start Streamlit directly. 
+# We've embedded the quantum math into the app so we don't need a separate background server!
 streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0

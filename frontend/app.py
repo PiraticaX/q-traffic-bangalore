@@ -2,6 +2,7 @@ import streamlit as st
 import pydeck as pdk
 import pandas as pd
 import requests
+from backend.optimizers.quantum_qubo import solve_grid_simulation
 import time
 import random
 import plotly.express as px
@@ -261,19 +262,13 @@ if not st.session_state.get('sim_finished', False):
             })
             
         try:
-            # We added a 3 second timeout so Streamlit doesn't freeze if FastAPI dies
-            res = requests.post("http://127.0.0.1:8000/simulate_all", json=payload, timeout=3)
-            if res.status_code == 200:
-                decisions = res.json()
-                for model in ["classical", "ai", "quantum"]:
-                    for j_name in st.session_state.junction_names:
-                        st.session_state.grids[model][j_name]["ns_green"] = decisions[model][j_name]["ns"]
-                        st.session_state.grids[model][j_name]["ew_green"] = decisions[model][j_name]["ew"]
-            else:
-                st.error(f"Backend returned error code: {res.status_code}")
+            decisions = solve_grid_simulation(payload["junctions"])
+            for model in ["classical", "ai", "quantum"]:
+                for j_name in st.session_state.junction_names:
+                    st.session_state.grids[model][j_name]["ns_green"] = decisions[model][j_name]["ns"]
+                    st.session_state.grids[model][j_name]["ew_green"] = decisions[model][j_name]["ew"]
         except Exception as e:
-            # THIS IS THE CRITICAL LINE that will show on the UI if FastAPI isn't running
-            st.error(f"⚠️ Backend Unreachable! Is FastAPI running? Error: {e}")
+            st.error(f"⚠️ QUANTUM ENGINE ERROR: {str(e)}")
 
         st.rerun()
 
