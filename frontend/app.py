@@ -89,14 +89,15 @@ def generate_grid():
 if st.sidebar.button("Initialize Sector Grid") or 'junction_names' not in st.session_state:
     generate_grid()
 
-# --- HEADER ---st.markdown(f"<h1 style='text-align: center; color: white;'>⚛️ Q-TRAFFIC ENTERPRISE : {selected_loc.upper()}</h1>", unsafe_allow_html=True)
+# --- HEADER ---
+st.markdown(f"<h1 style='text-align: center; color: white;'>⚛️ Q-TRAFFIC ENTERPRISE : {selected_loc.upper()}</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #8b949e;'>Quantum-Assisted Traffic Signal Optimization Engine</p>", unsafe_allow_html=True)
 
 # --- CONTROLS ---
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if st.button("▶ START / 🛑 STOP LIVE SIMULATION", use_container_width=True):
-        st.session_state.sim_running = not st.session_state.sim_running
+        st.session_state.sim_running = not st.session_state.sim_running 
         if not st.session_state.sim_running and st.session_state.tick > 0:
             st.session_state.sim_finished = True  # Trigger reports when stopped
 
@@ -157,6 +158,7 @@ if not st.session_state.get('sim_finished', False):
                 grid = st.session_state.grids[model][j_name]
                 grid["ns_cars"] += new_traffic[j_name]["ns"]
                 grid["ew_cars"] += new_traffic[j_name]["ew"]
+                
                 if grid["ns_green"]:
                     grid["ns_cars"] = max(0, grid["ns_cars"] - 6)
                     grid["ns_wait"] = 0
@@ -170,7 +172,79 @@ if not st.session_state.get('sim_finished', False):
                     grid["ew_green_time"] += 1
                     grid["ns_green_time"] = 0
 
-        # Data Logging for Charts
+if not st.session_state.sim_running and st.session_state.tick > 0:
+    st.session_state.sim_finished = True  # Trigger reports when stopped
+
+# --- LIVE SIMULATION VIEW ---
+if not st.session_state.get('sim_finished', False):
+    
+    st.markdown("### 📡 Live Geospatial Telemetry")
+    map_data = []
+    for j_name, loc in st.session_state.coords.items():
+        q_grid = st.session_state.grids["quantum"][j_name]
+        c_ns = [0, 255, 128, 200] if q_grid["ns_green"] else [255, 60, 60, 200]
+        c_ew = [0, 255, 128, 200] if q_grid["ew_green"] else [255, 60, 60, 200]
+        map_data.append({"junction": j_name, "dir": "N/S", "lat": loc["ns"][0], "lon": loc["ns"][1], "cars": q_grid["ns_cars"], "color": c_ns})
+        map_data.append({"junction": j_name, "dir": "E/W", "lat": loc["ew"][0], "lon": loc["ew"][1], "cars": q_grid["ew_cars"], "color": c_ew})
+
+    df_map = pd.DataFrame(map_data)
+    view_state = pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=14.2, pitch=45)
+    layer = pdk.Layer(
+        "ColumnLayer", data=df_map, get_position=["lon", "lat"], get_elevation="cars",
+        elevation_scale=4, radius=35, get_fill_color="color", pickable=True, auto_highlight=True,
+    )
+    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{junction} {dir}: {cars} cars waiting"}))
+
+    st.markdown("### 📊 Real-Time Optimization Engine")
+    col_c, col_a, col_q = st.columns(3)
+
+    def render_column(col, title, model_key, accent_color):
+        with col:
+            st.markdown(f"<h3 style='color: {accent_color};'>{title}</h3>", unsafe_allow_html=True)
+            total_wait = sum(j["ns_wait"] + j["ew_wait"] for j in st.session_state.grids[model_key].values())
+            total_cars = sum(j["ns_cars"] + j["ew_cars"] for j in st.session_state.grids[model_key].values())
+            st.metric("Total Sector Wait Time", f"{total_wait} sec")
+            st.metric("Vehicles in Queue", f"{total_cars}")
+            
+            with st.expander("Detailed Junction Telemetry"):
+                for j_name in st.session_state.junction_names:
+                    j_data = st.session_state.grids[model_key][j_name]
+                    n_time = f"({j_data['ns_green_time']}s)" if j_data['ns_green'] else ""
+                    e_time = f"({j_data['ew_green_time']}s)" if j_data['ew_green'] else ""
+                    st.write(f"**{j_name}**")
+                    st.write(f"{'🟢' if j_data['ns_green'] else '🔴'} NS: {j_data['ns_cars']} | Wait: {j_data['ns_wait']}s {n_time}")
+                    st.write(f"{'🟢' if j_data['ew_green'] else '🔴'} EW: {j_data['ew_cars']} | Wait: {j_data['ew_wait']}s {e_time}")
+                    st.write("---")
+
+    render_column(col_c, "🏛️ Legacy (Classical)", "classical", "#ff7b72")
+    render_column(col_a, "🤖 AI Heuristic", "ai", "#d2a8ff")
+    render_column(col_q, "⚛️ Quantum QUBO", "quantum", "#79c0ff")
+
+    # --- SIMULATION LOOP ---
+    if st.session_state.sim_running:
+        time.sleep(0.5)
+        st.session_state.tick += 1
+        
+        new_traffic = {j: {"ns": random.randint(0, 3), "ew": random.randint(0, 3)} for j in st.session_state.junction_names}
+        
+        for model in ["classical", "ai", "quantum"]:
+            for j_name in st.session_state.junction_names:
+                grid = st.session_state.grids[model][j_name]
+                grid["ns_cars"] += new_traffic[j_name]["ns"]
+                grid["ew_cars"] += new_traffic[j_name]["ew"]
+                
+                if grid["ns_green"]:
+                    grid["ns_cars"] = max(0, grid["ns_cars"] - 6)
+                    grid["ns_wait"] = 0
+                    grid["ew_wait"] += 1
+                    grid["ns_green_time"] += 1
+                    grid["ew_green_time"] = 0
+                else:
+                    grid["ew_cars"] = max(0, grid["ew_cars"] - 6)
+                    grid["ew_wait"] = 0
+                    grid["ns_wait"] += 1
+                    grid["ns_green_time"] = 0
+
         st.session_state.history["tick"].append(st.session_state.tick)
         st.session_state.history["classical_wait"].append(sum(j["ns_wait"] + j["ew_wait"] for j in st.session_state.grids["classical"].values()))
         st.session_state.history["ai_wait"].append(sum(j["ns_wait"] + j["ew_wait"] for j in st.session_state.grids["ai"].values()))
@@ -187,15 +261,19 @@ if not st.session_state.get('sim_finished', False):
             })
             
         try:
-            res = requests.post("http://127.0.0.1:8000/simulate_all", json=payload)
+            # We added a 3 second timeout so Streamlit doesn't freeze if FastAPI dies
+            res = requests.post("http://127.0.0.1:8000/simulate_all", json=payload, timeout=3)
             if res.status_code == 200:
                 decisions = res.json()
                 for model in ["classical", "ai", "quantum"]:
                     for j_name in st.session_state.junction_names:
                         st.session_state.grids[model][j_name]["ns_green"] = decisions[model][j_name]["ns"]
                         st.session_state.grids[model][j_name]["ew_green"] = decisions[model][j_name]["ew"]
-        except Exception:
-            pass
+            else:
+                st.error(f"Backend returned error code: {res.status_code}")
+        except Exception as e:
+            # THIS IS THE CRITICAL LINE that will show on the UI if FastAPI isn't running
+            st.error(f"⚠️ Backend Unreachable! Is FastAPI running? Error: {e}")
 
         st.rerun()
 
@@ -204,17 +282,14 @@ else:
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center; color: #58a6ff;'>📈 Executive Simulation Report</h2>", unsafe_allow_html=True)
     
-    # Calculate Business Metrics
     c_wait_total = sum(st.session_state.history["classical_wait"])
     q_wait_total = sum(st.session_state.history["quantum_wait"])
     
     time_saved_sec = c_wait_total - q_wait_total
     efficiency_inc = ((c_wait_total - q_wait_total) / max(1, c_wait_total)) * 100
     
-    # Assumption: An idling car wastes ~1 liter per hour. 
-    # Formula: (Seconds Saved) * (1 hour / 3600 sec) * (1 Liter)
     fuel_saved_liters = time_saved_sec / 3600.0
-    carbon_prevented_kg = fuel_saved_liters * 2.31 # 2.31 kg of CO2 per liter of petrol
+    carbon_prevented_kg = fuel_saved_liters * 2.31 
 
     rc1, rc2, rc3, rc4 = st.columns(4)
     rc1.metric("Quantum Efficiency Boost", f"+{efficiency_inc:.1f}%")
@@ -224,7 +299,6 @@ else:
     
     st.write("---")
     
-    # Chart 1: Time Series of Grid Congestion
     st.markdown("### Grid Congestion Over Time (Wait Time Penalty)")
     df_hist = pd.DataFrame(st.session_state.history)
     fig1 = px.line(df_hist, x="tick", y=["classical_wait", "ai_wait", "quantum_wait"],
@@ -235,7 +309,6 @@ else:
     
     col_chart1, col_chart2 = st.columns(2)
     
-    # Chart 2: Total Fuel Burned (Bar Chart)
     with col_chart1:
         st.markdown("### Total Fuel Wasted by Idling (Liters)")
         fuel_data = pd.DataFrame({
@@ -247,7 +320,6 @@ else:
         fig2.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font_color="white", showlegend=False)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Chart 3: Performance Distribution (Donut)
     with col_chart2:
         st.markdown("### Total Traffic Bottleneck Distribution")
         fig3 = px.pie(fuel_data, values="Fuel Wasted (L)", names="Method", hole=0.5,
